@@ -8,7 +8,7 @@ import matplotlib.pyplot as plt
 from matplotlib.patches import Patch
 
 
-def scenario_plot(historical_ds, rcp45_ds, rcp85_ds):
+def scenario_plot(historical_ds, rcp45_ds, rcp85_ds, cmap='Blues'):
     """
     Plots the BCM outputs on a map.
     Args:
@@ -40,7 +40,7 @@ def scenario_plot(historical_ds, rcp45_ds, rcp85_ds):
         "physical", "ocean", "50m", edgecolor="darkgrey", facecolor='white')
 
     scenario_fg = ds_avg_ypred.plot(x="lon", y="lat", col="t", row="scenario", aspect=2, cbar_kwargs={"pad": 0.03, 'shrink': 0.8, 'label': 'BCM posterior mean [mm/day]'},
-                                    subplot_kws={"projection": proj}, cmap='Reds')
+                                    subplot_kws={"projection": proj}, cmap=cmap)
 
     hdl = [Patch(facecolor='none', edgecolor='k', hatch='..',
                  label='< historical 5th percent.'),
