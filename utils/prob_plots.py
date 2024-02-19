@@ -54,9 +54,9 @@ def high_precip(df: pd.DataFrame, save:bool=False):
     ax1.axvline(threshold, clip_on=False, color='lightblue',
                 linestyle='--', ) #label='high precipitation threshold')
     ax2.axvline(threshold, clip_on=False, color='lightblue',
-                linestyle='--', label='high precipitation threshold')
+                linestyle='--',)  #label='high precipitation threshold')
 
-    leg = ax1.legend()
+    leg = ax2.legend()
     leg.get_frame().set_facecolor('white')
 
     ax2.set_ylabel('Cumulative distribution function')
@@ -109,13 +109,13 @@ def low_precip(df: pd.DataFrame, save:bool=False):
     ax2.set_xlim(xlim1)
 
     # add line to indicate the change in x scale
-    ax1.axvline(threshold, clip_on=False, linestyle=':',
-                label='low precipitation threshold')
-    ax2.axvline(threshold, clip_on=False, linestyle=':',
-                label='low precipitation threshold')
+    ax1.axvline(threshold, clip_on=False, linestyle=':',)
+                #label='low precipitation threshold')
+    ax2.axvline(threshold, clip_on=False, linestyle=':',)
+                #label='low precipitation threshold')
 
-    #leg = ax1.legend()
-    #leg.get_frame().set_facecolor('white')
+    leg = ax2.legend()
+    leg.get_frame().set_facecolor('white')
 
     ax2.set_ylabel('Cumulative distribution function')
     ax1.set_ylabel('Probability distribution function')
@@ -127,7 +127,10 @@ def low_precip(df: pd.DataFrame, save:bool=False):
         plt.savefig('plots/low_precip_dist.png', bbox_inches='tight')
 
 
+# TODO: fix the __name__ == '__main__' block or functions to work directly from the netcdf/csv files
+'''
 for __name__ in '__main__':
     df = pd.read_csv('data/rbcm_single_rcm_samples.csv')
     low_precip(df)
     high_precip(df)
+'''
