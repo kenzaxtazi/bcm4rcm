@@ -8,12 +8,16 @@ import matplotlib.pyplot as plt
 from matplotlib.patches import Patch
 
 
-def scenario_plot(historical_ds, rcp45_ds, rcp85_ds, cmap='Blues'):
+def scenario_plot(historical_ds: xr.Dataset, rcp45_ds:xr.Dataset, rcp85_ds:xr.Dataset, cmap:str='Blues', save:bool=False):
     """
-    Plots the BCM outputs on a map.
+    Plots the model outputs on a map.
+
     Args:
-        df (_type_): BCM output dataframe
-        scenario (str, optional): climate scenario. Defaults to "RCP8.5".
+        historical_ds (xr.Dataset): _description_
+        rcp45_ds (xr.Dataset): _description_
+        rcp85_ds (xr.Dataset): _description_
+        cmap (str, optional): _description_. Defaults to 'Blues'.
+        save (bool, optional): _description_. Defaults to False.
     """
 
     hist_ds_avg_ypred = seasonal_means(historical_ds.y_pred, 'y_pred')
@@ -39,7 +43,8 @@ def scenario_plot(historical_ds, rcp45_ds, rcp85_ds, cmap='Blues'):
     ocean_50m = cf.NaturalEarthFeature(
         "physical", "ocean", "50m", edgecolor="darkgrey", facecolor='white')
 
-    scenario_fg = ds_avg_ypred.plot(x="lon", y="lat", col="t", row="scenario", aspect=2, cbar_kwargs={"pad": 0.03, 'shrink': 0.8, 'label': 'BCM posterior mean [mm/day]'},
+    scenario_fg = ds_avg_ypred.plot(x="lon", y="lat", col="t", row="scenario", aspect=2, 
+                                    cbar_kwargs={"pad": 0.03, 'shrink': 0.8, 'label': 'BCM posterior mean [mm/day]'}, 
                                     subplot_kws={"projection": proj}, cmap=cmap)
 
     hdl = [Patch(facecolor='none', edgecolor='k', hatch='..',
@@ -84,16 +89,23 @@ def scenario_plot(historical_ds, rcp45_ds, rcp85_ds, cmap='Blues'):
             gl.left_labels = False
             ds_avg_ypred.isel(scenario=1, t=2).plot.contourf(x='lon', y='lat', hatches=['..', '', '//'], levels=[p5_winter, p95_winter],
                                                              colors='none', add_colorbar=False,  ax=ax, transform=ccrs.PlateCarree())
-            ax.legend(handles=hdl)
+            ax.legend(handles=hdl, bbox_to_anchor=(0.5, -0.3))
 
         ax.add_feature(ocean_50m)
 
     # Save and plot figure
+    if save == True:
+        plt.savefig('plots/test_BCM_scenarios.png', bbox_inches='tight')
 
-    plt.savefig('plots/test_BCM_scenarios.png', bbox_inches='tight')
 
+def mean_ci_plots(ds: xr.Dataset, save:bool=False):
+    """
+    Plots the distribution mean and 95% confidence interval.
 
-def mean_ci_plots(ds):
+    Args:
+        ds (xr.Dataset): output to plot.
+        save (bool, optional): save plot. Defaults to False.
+    """
 
     proj = ccrs.PlateCarree()
     ds_avg_ypred = seasonal_means(ds.y_pred, 'y_pred')
@@ -120,8 +132,8 @@ def mean_ci_plots(ds):
         ax.add_feature(ocean_50m)
 
     # plt.subplots_adjust(wspace=0.15)
-
-    plt.savefig('plots/test_BCM_historical_mean.png', bbox_inches='tight')
+    if save == True:
+        plt.savefig('plots/test_BCM_historical_mean.png', bbox_inches='tight')
 
     # CI facet grid plot
     CI_fg = ds_avg_CI.plot(x="lon", y="lat", col="t", cmap='magma', cbar_kwargs={
@@ -140,7 +152,8 @@ def mean_ci_plots(ds):
         gl.left_labels = False
         ax.add_feature(ocean_50m)
 
-    plt.savefig('plots/test_BCM_historical_CI.png', bbox_inches='tight')
+    if save == True:
+        plt.savefig('plots/test_BCM_historical_CI.png', bbox_inches='tight')
 
 
 def seasonal_means(da: xr.DataArray, var: str) -> xr.Dataset:
