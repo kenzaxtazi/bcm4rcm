@@ -1,7 +1,8 @@
 import numpy as np
+import scipy as sp
 
 
-def wass_distance(P_mu:np.float64, P_var:np.float64, Q_mu:np.float64, Q_var:np.float64)-> np.float64:
+def normal_wass_distance(P_mu:np.float64, P_var:np.float64, Q_mu:np.float64, Q_var:np.float64)-> np.float64:
     """
     The 2-Wassertein distance between two normal distributions.
 
@@ -21,8 +22,34 @@ def wass_distance(P_mu:np.float64, P_var:np.float64, Q_mu:np.float64, Q_var:np.f
 def rcm_wass_distances(rcm_arr: np.ndarray, aphro_arr:np.ndarray, save:bool=False)-> np.ndarray:
     """
     Returns 2-Wasserstein distances between RCM and APHRODITE data. 
-    The data should have already been scaled by it 95th percentile value
-    followed by a Box-Cox transformation.
+    The data should have already been scaled by it 95th percentile value.
+
+    Args:
+        rcm_list (np.ndarray): scaled RCM data.
+        aphrodite (np.ndarray): scaled APHRODITE data.
+
+    Returns:
+        np.ndarray: Wasserstein distances (not normalised). 
+    """
+
+    wass_dists = []
+
+    for i in range(len(rcm_arr)):
+        # calculate wass dist using scipy
+        wass = sp.stats.wasserstein_distance(rcm_arr[i], aphro_arr)
+        wass_dists.append(wass)
+    
+    wass_arr = np.array(wass_dists)
+
+    if save:
+        np.save('wass_dists.npy', wass_arr)
+    
+    return wass_arr
+
+def rcm_normal_wass_distances(rcm_arr: np.ndarray, aphro_arr:np.ndarray, save:bool=False)-> np.ndarray:
+    """
+    Returns 2-Wasserstein distances between RCM and APHRODITE data. Assuming both distributions are normal.
+    The data should have already been scaled by it 95th percentile value.
 
     Args:
         rcm_list (np.ndarray): scaled RCM data.
@@ -69,7 +96,7 @@ def softmax(wass:np.ndarray, T:int=8)-> np.array:
     return weights_norm
 
 
-def mixture_of_experts(weights:np.array, model_outputs:np.array)-> np.array:
+def mean_mixture_of_experts(weights:np.array, model_outputs:np.ndarray)-> np.ndarray:
     """
     Generate mixture of experts.
 
@@ -82,3 +109,47 @@ def mixture_of_experts(weights:np.array, model_outputs:np.array)-> np.array:
     """
     mean = np.sum(weights * model_outputs, axis=0)
     return mean
+
+
+class mixture_of_experts():
+    """ Generate mixture of experts model for arbitrary distributions. """
+
+    def __init__(self, lambdas:np.ndarray, means:np.ndarray, vars:np.ndarray, weights:np.ndarray):
+        """
+        Intialise the mixture of experts model for RCMs.
+
+        Args:
+            lambdas (np.ndarray): Box-Cox scaling factors for each of the 5 distributions.
+            means (np.ndarray): Means of the normals for the BCM4RCMs.
+            vars (np.ndarray): Variances of the normals for the BCM4RCMs.
+            weights (np.array): Weights assigned to each of the BCM4RCMs.
+        """
+        self.lambdas = lambdas
+        self.means = means
+        self.vars = vars
+        self.weights = weights
+
+
+    def predict_prob(self, x:np.ndarray)-> np.ndarray:
+        """
+        Predict the probability density function of the mixture of experts model.
+
+        Args:
+            x (np.ndarray): precipitation values.
+
+        Returns:
+            np.ndarray: predicted probabilities.
+        """
+        rcm_probs = []
+
+        n = len(self.lambdas)
+
+        for i in range(n):
+            normal_dists = sp.stats.norm(self.means[i], self.vars[i]).pdf(x)
+            probs = sp.stats.spcecial.inv_boxcox(normal_dists, self.lambdas[i])
+            rcm_probs.append(probs)
+
+        rcm_probs = np.array(rcm_probs)
+        moe_probs = np.sum(self.weights * rcm_probs, axis=0)
+
+        return moe_probs
