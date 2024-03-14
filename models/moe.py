@@ -25,7 +25,7 @@ def rcm_wass_distances(rcm_arr: np.ndarray, aphro_arr:np.ndarray, save:bool=Fals
     The data should have already been scaled by it 95th percentile value.
 
     Args:
-        rcm_list (np.ndarray): scaled RCM data.
+        rcm_list (np.ndarray): scaled RCM data. Shape RCM * years * months * lat * lon (5, 30, 12, 90, 40).
         aphrodite (np.ndarray): scaled APHRODITE data.
 
     Returns:
@@ -34,11 +34,16 @@ def rcm_wass_distances(rcm_arr: np.ndarray, aphro_arr:np.ndarray, save:bool=Fals
 
     wass_dists = []
 
-    for i in range(len(rcm_arr)):
-        # calculate wass dist using scipy
-        wass = sp.stats.wasserstein_distance(rcm_arr[i], aphro_arr)
-        wass_dists.append(wass)
-    
+    # calculate wass dist using scipy
+    # TODO: vectorise this
+
+    for i in range(rcm_arr.shape[0]):
+        for m in range(rcm_arr.shape[2]):
+            for lon in range(rcm_arr.shape[3]):
+                for lat in range(rcm_arr.shape[4]):
+                    wass = sp.stats.wasserstein_distance(rcm_arr[i,:, m, lon, lat], aphro_arr[:, m, lon, lat])
+                    wass_dists.append(wass)
+                    
     wass_arr = np.array(wass_dists)
 
     if save:
@@ -66,7 +71,7 @@ def rcm_normal_wass_distances(rcm_arr: np.ndarray, aphro_arr:np.ndarray, save:bo
         P_mu = np.mean(rcm_arr[i], axis=-2)
         Q_var = np.var(aphro_arr, axis=-2)
         Q_mu = np.mean(aphro_arr, axis=-2)
-        wass = wass_distance(P_mu, P_var, Q_mu, Q_var)
+        wass = normal_wass_distance(P_mu, P_var, Q_mu, Q_var)
         wass_dists.append(wass)
     
     wass_arr = np.array(wass_dists)
@@ -96,7 +101,7 @@ def softmax(wass:np.ndarray, T:int=8)-> np.array:
     return weights_norm
 
 
-def mean_mixture_of_experts(weights:np.array, model_outputs:np.ndarray)-> np.ndarray:
+def OLD_mean_mixture_of_experts(weights:np.array, model_outputs:np.ndarray)-> np.ndarray:
     """
     Generate mixture of experts.
 
