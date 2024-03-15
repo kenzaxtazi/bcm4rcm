@@ -44,7 +44,6 @@ def get_latent_submodels(
             ])
         
         #gpflow.set_trainable(inducing_variable, False)
-       
 
         submodel = gpflow.models.SVGP(
             kernel=kernel,
