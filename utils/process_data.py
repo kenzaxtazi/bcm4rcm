@@ -1,6 +1,7 @@
 import xarray as xr
 import sys #noqa
 sys.path.append( '/Users/kenzatazi/Documents/CDT/Code') #noqa
+sys.path.append( '/Users/kenzatazi/Documents/CDT/Code/bcm4rcm') #noqa
 from load import cordex 
 
 
@@ -36,4 +37,4 @@ def process_data(model_list: list, experiment: str, minyear: str, maxyear: str):
         else:
             clean_ds = sliced_ds
         df = clean_ds.to_dataframe().reset_index()
-        df.to_csv('data/processed/'+ experiment + '_' + model + '_' + minyear + '_' + maxyear + '.csv')
+        df.to_csv('/Users/kenzatazi/Documents/CDT/Code/bcm4rcm/data/processed/'+ experiment + '_' + model + '_' + minyear + '_' + maxyear + '.csv')
