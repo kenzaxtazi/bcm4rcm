@@ -28,7 +28,6 @@ class EnsembleMethods(Enum):
     BARY = "Bary"
     MoE = "MoE"
 
-
 class WeightingMethods(Enum):
     """Weighting methods"""
 
@@ -39,6 +38,53 @@ class WeightingMethods(Enum):
     NONE = "NoWeights"
     KL = "KL"
 
+
+def compute_weights(
+    mu_s: tf.Tensor,
+    var_s: tf.Tensor,
+    power: float,
+    weighting: WeightingMethods,
+    prior_var: Optional[tf.Tensor] = None,
+    softmax: bool = False,
+) -> tf.Tensor:
+
+    """Compute unnormalized weight matrix
+
+    Inputs :
+        - mu_s: predictive mean of each expert (P) at each test point (N) for each output (L)
+        - var_s: predictive (marginal) variance of each expert (P) at each test point (N) for each output (L)
+        - var_s: dimension: n_expert x n_test_points : predictive variance of each expert at each test point
+        - power: scalar, Softmax scaling
+        - weighting: weighting method
+        - prior_var, prior variance
+        - soft_max_wass : whether to use softmax scaling or fraction scaling
+
+    Output :
+        -- weight_matrix, dimension: n_expert x n_test_points : unnormalized weight of ith expert at jth test point
+    """
+
+    if weighting == WeightingMethods.VAR:
+        return tf.math.exp(-power * var_s)
+
+    elif weighting == WeightingMethods.WASS:
+        wass = mu_s**2 + (var_s - prior_var) #** 2
+        if softmax:
+            return tf.math.exp(power * wass)
+        else:
+            return wass**power
+
+    elif weighting == WeightingMethods.UNI:
+        num_experts = tf.cast(tf.shape(mu_s)[-1], mu_s.dtype)
+        return tf.ones_like(mu_s) / num_experts
+
+    elif weighting == WeightingMethods.ENT:
+        return 0.5 * (tf.math.log(prior_var) - tf.math.log(var_s))
+
+    elif weighting == WeightingMethods.NONE:
+        return tf.ones_like(mu_s)
+
+    else:
+        raise NotImplementedError("Unknown weighting passed to compute_weights.")
 
 
 def get_latent_submodels(
@@ -302,7 +348,6 @@ class latent_Ensemble(latent_GPEnsemble):
         m = tf.constant(m, dtype=tf.float64) 
         unc = tf.constant(unc, dtype=tf.float64)
         return self.models[0].likelihood.predict_mean_and_var(Xnew, m, unc)
-
 
 class OLD_FixedVarianceLikelihood(gpflow.functions.Function):
     """ Fixed Variance likelihood function"""
