@@ -3,53 +3,41 @@
 
 # # Latent BCMs 
 
+import os
+import sys
+
+"""
 month = '01'
 rcm = 'CSIRO'
 year = '1976_2006'
 experiment = 'historical'
-directory = '/Users/kenzatazi/Documents/CDT/Code/'
+"""
 
+month = os.environ['month']
+rcm = os.environ['rcm']
+year =  os.environ['year']
+experiment =  os.environ['experiment']
+
+directory = '/data/hpcdata/users/kenzi22/'
 
 import gpflow
-import tqdm
 import scipy as sp
 import numpy as np
 import pandas as pd
-import xarray as xr
 import tensorflow as tf
 import tensorflow_probability as tfp
-
-import cartopy.crs as ccrs
-import cartopy.feature as cf
-
-import matplotlib.pyplot as plt
-from matplotlib.patches import Patch
-
 from sklearn.preprocessing import StandardScaler
-
-from scipy.stats import boxcox
-from scipy.special import inv_boxcox
-from gpflow.conditionals.util import sample_mvn
-
-
-
-
 
 
 # Custom libraries
-import sys
 sys.path.append(directory + 'bcm4rcm/')
-import guepard
 from models import bcm
-from utils.areal_plots import seasonal_means
 
-# import sklearn scaler
-from sklearn.preprocessing import StandardScaler
 
 
 # Get file name 
 ref = experiment +  '_' + rcm + '_' + year
-file = directory + 'bcm4rcm/data/processed/' + ref + '.csv"
+file = directory + 'bcm4rcm/data/processed/' + ref + '.csv'
 print(file)
 
 # Load data
@@ -57,14 +45,14 @@ df = pd.read_csv(file, index_col=0)
 loc_df =  df
 loc_df['time'] = pd.to_datetime(loc_df['time'])
 loc_df['month'] = loc_df['time'].dt.month
-loc_df =  df[df['month'] == int(month)]
+loc_df =  df[df['month'] == int(month)-1]
 loc_df = loc_df.sort_values(by=['lon', 'lat'])
 
 #p95 = np.percentile(loc_df['tp'], 95)
 
 y_scaler = StandardScaler()
 loc_df['tp_bc'], lmbda = sp.stats.boxcox(loc_df['tp']+0.001)
-tp_tr = y_scaler.fit_transform(loc_df['tp_bc'].values.reshape(-1, 1))
+tp_tr = y_scaler.fit_transform(loc_df['tp_bc'].values).reshape(-1, 1)
 
 loc_df['tp_tr'] = tp_tr
 rcm_df = loc_df[['lon', 'lat', 'tp_tr']]
@@ -104,7 +92,7 @@ kernel = gpflow.kernels.SeparateIndependent(
 
 submodels = bcm.get_latent_submodels(Xl, Zl, kernel=kernel, likelihood=likelihood)
 m_bcm1 = bcm.latent_Ensemble(
-    models=submodels, method=guepard.baselines.EnsembleMethods.RBCM, weighting=guepard.baselines.WeightingMethods.VAR)
+    models=submodels, method=bcm.EnsembleMethods.RBCM, weighting=bcm.WeightingMethods.VAR)
 
 gpflow.utilities.set_trainable(m_bcm1.models[0].inducing_variable.inducing_variable_list[0].Z, False)
 gpflow.utilities.set_trainable(m_bcm1.models[0].inducing_variable.inducing_variable_list[1].Z, False)
@@ -140,20 +128,20 @@ for epoch in range(1, epochs + 1):
 
 
 ### Predictions
-aphro_grid = pd.read_csv('/Users/kenzatazi/Documents/CDT/Code/bcm4rcm/data/aphro_grid.csv')
+aphro_grid = pd.read_csv(directory + 'bcm4rcm/data/aphro_grid.csv')
 aphro_arr = aphro_grid[['lat', 'lon']].values
 
-ypred, var = m_bcm1.predict_y(aphro_arr, full_cov=False, full_output_cov=False)#np.array(Xl).reshape(-1,3))
+ypred, var = m_bcm1.predict_y(aphro_arr, full_cov=False, full_output_cov=False) #np.array(Xl).reshape(-1,3))
 arr= np.stack((ypred.numpy().flatten(), var.numpy().flatten()), axis=1)
 
 df_temp= pd.DataFrame(arr, columns=['pred0', 'var0'])
 df_temp['y_pred'] = y_scaler.inverse_transform(df_temp['pred0'].values)
 df_temp['var'] = df_temp['var0'] * y_scaler.var_
 df_temp[['lon', 'lat']] = aphro_arr
-df_temp = df_temp[['y_pred', 'var']].fillna(0)
+df_temp[['y_pred', 'var']] = df_temp[['y_pred', 'var']].fillna(0)
 
-df_temp[['pred', 'var']].reset_index().as_csv('bcm_' + ref + '_' + str(month) + '.csv')
-np.save( 'bcm_' + ref + '_' + str(month)+ '_lambda.npy', np.array(lmbda))
+df_temp.to_csv(directory + 'bcm4rcm/data/outputs/' + experiment + '/bcm_' + ref + '_' + str(month) + '.csv', index=False)
+np.save( 'lambda_' + ref + '_' + str(month)+ '.npy', np.array(lmbda))
 
 
 
