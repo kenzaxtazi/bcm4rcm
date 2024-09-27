@@ -5,21 +5,14 @@
 # 25th September 2024
 
 # Import libraries
-import glob
-import tqdm
+import os
 import gpflow
 
 import scipy as sp
 import numpy as np
 import pandas as pd
-import tensorflow as tf
-import tensorflow_probability as tfp
 
 from sklearn.preprocessing import StandardScaler
-
-from scipy.stats import boxcox
-from scipy.special import inv_boxcox
-from gpflow.conditionals.util import sample_mvn
 
 # Custom libraries
 directory = '/data/hpcdata/users/kenzi22/'
@@ -29,20 +22,20 @@ import sys
 sys.path.append(directory + 'guepard_repo/')
 sys.path.append(directory + 'bcm4rcm/')
 sys.path.append(directory)
+from models import guepard_baselines
 
-import guepard
 #############################################
 
-
-rcm = 'CSIRO'
-year = '1976_2006'
-experiment = 'historical'
-
 '''
+rcm = 'CSIRO'
+year = '1976_2005'
+experiment = 'historical'
+'''
+
 rcm = os.environ['rcm']
 year =  os.environ['year']
 experiment =  os.environ['experiment']
-'''
+
 
 ##############################################
 
@@ -57,7 +50,7 @@ df['month'] = df['time'].dt.month
 
 # Boxcox transform
 df['tp_tr'], lmbda = sp.stats.boxcox(df['tp']+0.001)
-np.save( 'lambda_' + ref + '.npy', np.array(lmbda))
+np.save(directory + 'bcm4rcm/data/bcm_outputs/'+  experiment + '/lambda_' + ref + '.npy', np.array(lmbda))
 
 # Aggregate data by month
 agg_df = pd.DataFrame()
@@ -90,12 +83,12 @@ Yl_mean = arr[:, :, 3][:, :, None]
 Yl_var = arr[:, :, 4][:, :, None]
 
 # Mean model
-mean_kernel = gpflow.kernels.Matern32()
+mean_kernel = gpflow.kernels.Matern32(lengthscales=[1.0,1.0,1.0])
 noise_var = 0.01
-mean_submodels = guepard.utilities.get_gpr_submodels(zip(Xl, Yl_mean), mean_kernel, noise_variance=noise_var)
-mean_rbcm = guepard.baselines.Ensemble(models=mean_submodels, 
-                                        method=guepard.baselines.EnsembleMethods.RBCM, 
-                                        weighting=guepard.baselines.WeightingMethods.VAR)
+mean_submodels = guepard_baselines.get_gpr_submodels(zip(Xl, Yl_mean), mean_kernel, noise_variance=noise_var)
+mean_rbcm = guepard_baselines.Ensemble(models=mean_submodels,
+                                        method=guepard_baselines.EnsembleMethods.RBCM, 
+                                        weighting=guepard_baselines.WeightingMethods.VAR)
 
 opt = gpflow.optimizers.Scipy()
 opt_logs = opt.minimize(mean_rbcm.training_loss,
@@ -104,12 +97,12 @@ gpflow.utilities.print_summary(mean_rbcm)
 
 
 # Var model
-var_kernel = gpflow.kernels.Matern32()
+var_kernel = gpflow.kernels.Matern32(lengthscales=[1,1,1])
 noise_var = 0.01
-var_submodels = guepard.utilities.get_gpr_submodels(zip(Xl, Yl_var), var_kernel, noise_variance=noise_var)
-var_rbcm = guepard.baselines.Ensemble(models=var_submodels, 
-                                        method=guepard.baselines.EnsembleMethods.RBCM, 
-                                        weighting=guepard.baselines.WeightingMethods.VAR)
+var_submodels = guepard_baselines.get_gpr_submodels(zip(Xl, Yl_var), var_kernel, noise_variance=noise_var)
+var_rbcm = guepard_baselines.Ensemble(models=var_submodels,
+                                        method=guepard_baselines.EnsembleMethods.RBCM, 
+                                        weighting=guepard_baselines.WeightingMethods.VAR)
 
 opt = gpflow.optimizers.Scipy()
 opt_logs = opt.minimize(var_rbcm.training_loss,
@@ -128,6 +121,7 @@ result_df['mean_uvar'] = mean_upreds * mean_scaler.var_
 result_df['var'] = var_scaler.inverse_transform(var_ypreds)
 result_df['var_uvar'] = var_upreds * var_scaler.var_
 
-result_df.to_csv(directory + 'bcm4rcm/data/outputs/' + experiment + '/bcm_' + ref + '.csv', index=False)
+result_df.to_csv(directory + 'bcm4rcm/data/bcm_outputs/' + experiment + '/bcm_' + ref + '.csv', index=False)
+
 
 
