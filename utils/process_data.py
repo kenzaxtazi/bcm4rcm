@@ -13,7 +13,7 @@ model_dict = {'CanESM2':['CanESM2', 'RegCM4'], 'NOAA_IITM':['NOAA', 'RegCM4'], '
               'MPI_IITM': ['MPI', 'RegCM4'], 'IPSL_RegCM4': ['IPSL', 'RegCM4'], 'CSIRO': ['CSIRO', 'RegCM4'],
               'EC-EARTH':['EC-EARTH', 'RCA4'], 'MIROC': ['MIROC','RCA4'], 'NOAA_SMHI':['NOAA', 'RCA4'],
               'CNRM': ['CNRM', 'RCA4'], 'MPI_RCA4': ['MPI', 'RCA4'], 'IPSL_RCA4': ['IPSL', 'RCA4'],
-              'MPI-REMO2009':['MPI', 'REMO2009']}
+              'MPI_REMO2009':['MPI', 'REMO2009']}
 
 
 def process_data(model_list: list, experiment: str, minyear: str, maxyear: str):
