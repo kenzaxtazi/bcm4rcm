@@ -5,6 +5,7 @@
 # 25th September 2024
 
 # Import libraries
+import os
 import sys
 import tqdm
 import scipy as sp
@@ -12,8 +13,8 @@ import numpy as np
 import pandas as pd
 
 # Custom libraries
-#directory = '/data/hpcdata/users/kenzi22/'
-directory = '/Users/kenzatazi/Documents/CDT/Code/'
+directory = '/data/hpcdata/users/kenzi22/'
+#directory = '/Users/kenzatazi/Documents/CDT/Code/'
 
 sys.path.append(directory + 'bcm4rcm/')
 sys.path.append(directory)
@@ -21,30 +22,29 @@ from load import aphrodite
 
 #############################################
 
-
-rcm = 'CSIRO'
-year = '1976_2006'
-experiment = 'historical'
-
 '''
+rcm = 'CSIRO'
+year = '1976_2005'
+experiment = 'historical'
+'''
+
 rcm = os.environ['rcm']
 year =  os.environ['year']
 experiment =  os.environ['experiment']
-'''
 
 ##############################################
 
 # Get filenames 
 ref = experiment +  '_' + rcm + '_' + year
-bcm_file = directory + 'bcm4rcm/data/outputs/' + experiment + '/bcm_' + ref + '.csv'
+bcm_file = directory + 'bcm4rcm/data/bcm_outputs/' + experiment + '/bcm_' + ref + '.csv'
 print(bcm_file)
 
-lambda_file = directory + 'bcm4rcm/data/outputs/' + experiment + '/lambda_' + ref + '.npy'
+lambda_file = directory + 'bcm4rcm/data/bcm_outputs/' + experiment + '/lambda_' + ref + '.npy'
 print(lambda_file)
 
 
 # Load data
-bcm_df = pd.read_csv(bcm_file, index_col=0)
+bcm_df = pd.read_csv(bcm_file, index_col=0).reset_index()
 lmbda = np.load(lambda_file)
 
 
