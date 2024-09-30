@@ -160,17 +160,14 @@ class GPEnsemble(GPModel, metaclass=abc.ABCMeta):
         return tf.reduce_sum(objectives)
 
     def training_loss(
-        self, data: List[Union[None, RegressionData]] = [None]
-    ) -> tf.Tensor:
-        Xl = data[0]
-        Yl = data[1]
+        self, data: List[Union[None, RegressionData]] = [None]) -> tf.Tensor:
         external = [
             isinstance(m, gpflow.models.ExternalDataTrainingLossMixin)
             for m in self.models
         ]
         objectives = [
-            m.training_loss((d[0],d[1])) if ext else m.training_loss()
-            for m, ext, X, Y, in zip_longest(self.models, external, Xl, Yl)
+            m.training_loss(d) if ext else m.training_loss()
+            for m, ext, d in zip_longest(self.models, external, data)
         ]
         return tf.reduce_sum(objectives)
     
@@ -452,7 +449,7 @@ class latent_Ensemble(latent_GPEnsemble):
             var = 1.0 / prec
             mu = var * tf.reduce_sum(weight_matrix * prec_s * Me, axis=-1)
 
-        np.save(str(self.weighting)+ "_weight_matrix_new.npy", weight_matrix.numpy())
+        #np.save(str(self.weighting)+ "_weight_matrix_new.npy", weight_matrix.numpy())
 
         return mu, var
 
@@ -464,3 +461,21 @@ class latent_Ensemble(latent_GPEnsemble):
 
         m, v = self.predict_f(Xnew)
         return self.likelihood.predict_mean_and_var(Xnew, m, v)
+    
+
+def get_gpr_submodels(
+    data_list,
+    kernel,
+    mean_function=None,
+    noise_variance:float = 0.01,) -> List:
+    """
+    Helper function to build a list of GPflow GPR submodels from a list of datasets, a GP prior and a likelihood variance.
+    """
+    models = [gpflow.models.GPR(data, kernel, mean_function, noise_variance) for data in data_list]
+    # else:
+    # models = [GPR((np.mean(data[0], axis=-2), np.mean(data[1], axis=-2)), kernel, mean_function, 
+    #              likelihood=gpflow.likelihoods.Gaussian(FixedVarianceOfMean(data[1]))) for data in data_list]
+    for m in models[1:]:
+        m.likelihood = models[0].likelihood
+        m.mean_function = models[0].mean_function
+    return models
