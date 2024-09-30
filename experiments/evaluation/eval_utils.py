@@ -1,35 +1,87 @@
+import numpy as np
 import pandas as pd
 
-def aggregate_to_4d_array(df, agg_func='mean'):
+def df_to_4d_array(df, variable = 'mean'):
     """
-    Aggregates values from a DataFrame for each month, latitude, longitude, and year,
-    then reshapes the result into a 4D NumPy array.
-    
+    Converts a DataFrame with columns ['month', 'lon', 'lat', 'value'] to a 4D NumPy array.
+
     Parameters:
-    - df: Pandas DataFrame with columns ['time', 'lat', 'lon', 'tp']
-    - agg_func: String!tchyLlama65
-     name of the aggregation function to use (e.g., 'mean', 'sum')
-    
+    ----------
+    df : pandas.DataFrame
+        DataFrame containing columns 'month', 'lon', 'lat', 'value'.
+
     Returns:
-    - A 4D NumPy array with shape [12, 90, 40, -1], where -1 is the number of years
+    -------
+    np.ndarray
+        A 4D NumPy array with dimensions [month, lon, lat, values].
     """
-    # Ensure 'time' is a datetime type
-    df['time'] = pd.to_datetime(df['time'])
+    # replaces NaN values with -9999
+    df = df.fillna(-9999)
+
+    # Pivot the DataFrame to create a 3D structure
+    pivot_df = df.pivot_table(index='month', columns=['lon', 'lat'], values=variable, aggfunc='first')
+
+    # Sort the pivot table
+    pivot_df = pivot_df.sort_index(axis=1)  # Sort by 'lon' and 'lat'
     
-    # Extract month and year
-    df['month'] = df['time'].dt.month
-    df['year'] = df['time'].dt.year - df['time'].dt.year.min()  # Normalize year
+    # Get the unique counts for each dimension
+    months = df['month'].nunique()
+    lons = df['lon'].nunique()
+    lats = df['lat'].nunique()
+
+    # Reshape the pivoted data into a 4D array
+    array = pivot_df.values.reshape(months, lons, lats)
+
+    # Replace -9999 with NaN
+    array[array == -9999] = np.nan
+
+    return array
+
+import numpy as np
+import pandas as pd
+
+def aggregate_to_4d_array(df, value_col, agg_func='mean'):
+    """
+    Aggregates values from a DataFrame for each month, latitude, and longitude,
+    then reshapes the result into a 4D NumPy array.
+
+    Parameters:
+    ----------
+    - df: Pandas DataFrame with columns ['month', 'lat', 'lon', value_col]
+    - value_col: String, name of the column to aggregate (e.g., 'tp')
+    - agg_func: String, name of the aggregation function to use (e.g., 'mean', 'sum')
+
+    Returns:
+    -------
+    - A 4D NumPy array with shape [num_months, num_lats, num_lons, num_values]
     
+    Raises:
+    -------
+    - ValueError: If the number of entries (e.g., years) is inconsistent across lat, lon, and month groups.
+    """
+    
+    # Group by lat, lon, and month and count the occurrences to check consistency
+    value_counts = df.groupby(['lat', 'lon', 'month']).size().reset_index(name='counts')
+    num_values = value_counts['counts'].nunique()  # Check if all groups have the same number of entries
+
+    if num_values != 1:
+        raise ValueError("The number of values is not consistent across all lat, lon, and month groups.")
+
     # Group and aggregate
-    aggregated_df = df.groupby(['month', 'lat', 'lon', 'year'])['tp'].agg(agg_func).reset_index()
+    aggregated_df = df.groupby(['month', 'lat', 'lon'])[value_col].agg(agg_func).reset_index()
+
+    # Get the number of unique months, lats, lons
+    num_months = df['month'].nunique()
+    num_lats = df['lat'].nunique()
+    num_lons = df['lon'].nunique()
+    num_values = value_counts['counts'].max()
+
+    # Pivot table to structure data into the required format
+    pivoted_df = aggregated_df.pivot_table(index=['month', 'lat', 'lon'], values=value_col, aggfunc='first', fill_value=np.nan)
     
-    # Pivot
-    pivoted_df = aggregated_df.pivot_table(index=['month', 'lat', 'lon'], columns='year', values='tp', fill_value=0)
-    
-    # Convert to a 4D array and reshape
-    num_years = len(df['year'].unique())
-    result_array = pivoted_df.values.reshape((12, 90, 40, num_years))
-    
+    # Convert to a 4D array
+    result_array = pivoted_df.values.reshape((num_months, num_lats, num_lons, num_values))
+
     return result_array
 
 # Example usage:
