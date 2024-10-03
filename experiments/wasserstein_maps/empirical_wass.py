@@ -71,6 +71,7 @@ for i in tqdm.tqdm(range(len(bcm_df))):
 
     bcm_samples_raw = np.random.normal(loc=mu, scale=np.sqrt(var), size=100)
     bcm_samples_tr = sp.special.inv_boxcox(bcm_samples_raw, lmbda)
+    bcm_samples_tr = np.nan_to_num(bcm_samples_tr, nan=0)
     p95 = np.percentile(bcm_samples_tr, 95)
     bcm_samples = bcm_samples_tr/p95
 
