@@ -42,16 +42,19 @@ print(bcm_file)
 lambda_file = directory + 'bcm4rcm/data/bcm_outputs/' + experiment + '/lambda_' + ref + '.npy'
 print(lambda_file)
 
-
 # Load data
 bcm_df = pd.read_csv(bcm_file, index_col=0).reset_index()
 lmbda = np.load(lambda_file)
 
+# Load processed data
+rcm_df = pd.read_csv(directory + 'bcm4rcm/data/processed/' + ref + '.csv')
+p95 = np.percentile(rcm_df['tp'].values, 95)
 
 # Load Aphrodite data
 aphro_ds = aphrodite.collect_APHRO('hma', minyear='1976', maxyear='2005')
 aphro_df = aphro_ds.to_dataframe().reset_index()
 aphro_df['month'] = aphro_df['time'].dt.month
+aphro_df['tp_sc'] = aphro_df['tp']/np.percentile(aphro_df['tp'].dropna().values, 95)
 
 # Make dataframe for Wasserstein distance
 wass_df = bcm_df[['lat', 'lon', 'month']]
@@ -72,13 +75,12 @@ for i in tqdm.tqdm(range(len(bcm_df))):
     bcm_samples_raw = np.random.normal(loc=mu, scale=np.sqrt(var), size=100)
     bcm_samples_tr = sp.special.inv_boxcox(bcm_samples_raw, lmbda)
     bcm_samples_tr = np.nan_to_num(bcm_samples_tr, nan=0)
-    p95 = np.percentile(bcm_samples_tr, 95)
+    #p95 = np.percentile(bcm_samples_tr, 95)
     bcm_samples = bcm_samples_tr/p95
 
     # Get Aphrodite 
     loc_aphro_df = aphro_df[(aphro_df['lat'] == lat) & (aphro_df['lon']== lon) & (aphro_df['month'] == mon)]
-    aphro_samples_raw = loc_aphro_df['tp'].values
-    aphro_samples = aphro_samples_raw/np.percentile(aphro_samples_raw, 95)
+    aphro_samples = loc_aphro_df['tp_sc'].values
 
     # Calulate Wasserstein Distance
     wass_dist = sp.stats.wasserstein_distance(bcm_samples, aphro_samples)
