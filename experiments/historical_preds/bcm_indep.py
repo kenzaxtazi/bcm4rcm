@@ -27,7 +27,7 @@ from models import guepard_baselines
 #############################################
 
 '''
-rcm = 'CSIRO'
+rcm = 'MIROC'
 year = '1976_2005'
 experiment = 'historical'
 '''
@@ -57,13 +57,13 @@ agg_df = pd.DataFrame()
 group = df.groupby(['lat', 'lon', 'month'])
 agg_df['mean'] = group['tp_tr'].mean()
 agg_df['var'] = group['tp_tr'].var()
-agg_df['var_exp'] = np.exp(agg_df['var'])
+agg_df['var_log'] = np.log(agg_df['var']+0.001)
 
 mean_scaler = StandardScaler()
 agg_df['mean_z'] = mean_scaler.fit_transform(agg_df['mean'].values.reshape(-1,1))
 
 var_scaler = StandardScaler()
-agg_df['var_z'] = var_scaler.fit_transform(agg_df['var_exp'].values.reshape(-1,1))
+agg_df['var_z'] = var_scaler.fit_transform(agg_df['var_log'].values.reshape(-1,1))
 rcm_df = agg_df[['mean_z', 'var_z']].reset_index()
 
 # Make aphrodite grid
@@ -119,11 +119,8 @@ result_df = pd.DataFrame()
 result_df[['lat', 'lon', 'month']] = pred_input
 result_df['mean'] = mean_scaler.inverse_transform(mean_ypreds)
 result_df['mean_uvar'] = mean_upreds * mean_scaler.var_
-result_df['var_exp'] = var_scaler.inverse_transform(var_ypreds)
-result_df['var'] = np.log(result_df['var_exp'])
-result_df['var_exp_uvar'] = var_upreds * var_scaler.var_
+result_df['var_log'] = var_scaler.inverse_transform(var_ypreds)
+result_df['var'] = np.exp(result_df['var_log'])
+result_df['var_log_uvar'] = var_upreds * var_scaler.var_
 
-result_df.to_csv(directory + 'bcm4rcm/data/bcm_outputs/' + experiment + '/bcm_' + ref + '.csv', index=False)
-
-
-
+result_df.to_csv(directory + 'bcm4rcm/data/bcm_outputs/' + experiment + '/bcm_' + ref + '.csv', index=False) 
