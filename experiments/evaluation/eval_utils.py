@@ -1,5 +1,222 @@
 import numpy as np
 import pandas as pd
+from numpy.lib.stride_tricks import sliding_window_view
+
+def sample_moe(samples: np.ndarray, weights: np.ndarray, num_moe_samples: int) -> np.ndarray:
+    """
+    Generates samples from a Mixture of Experts (MoE) distribution.
+    
+    Parameters:
+    ----------
+    samples : np.ndarray
+        Array of pre-generated samples for each expert across grid points.
+        Shape: [E, D1, D2, ..., Dk, S]
+            E: Number of experts
+            D1, D2, ..., Dk: Grid dimensions
+            S: Number of samples per expert at each grid point
+    
+    weights : np.ndarray
+        Weights for each expert at each grid point.
+        Shape: [E, D1, D2, ..., Dk]
+            E: Number of experts (must match the first dimension of `samples`)
+            D1, D2, ..., Dk: Grid dimensions (must match the corresponding dimensions in `samples`)
+        Notes:
+            - Weights should be non-negative.
+            - Weights for each grid point should sum to 1 across the expert axis.
+    
+    num_moe_samples : int
+        Number of samples to generate from the MoE distribution for each grid point.
+    
+    Returns:
+    -------
+    moe_samples : np.ndarray
+        Generated MoE samples for each grid point.
+        Shape: [D1, D2, ..., Dk, num_moe_samples]
+    
+    Raises:
+    ------
+    ValueError:
+        If input dimensions do not align or weights do not sum to 1.
+    """
+    # Validate inputs
+    if samples.ndim < 2:
+        raise ValueError("`samples` array must have at least two dimensions (experts and samples).")
+    
+    if weights.ndim != samples.ndim - 1:
+        raise ValueError("`weights` array must have one fewer dimension than `samples` array.")
+    
+    E_samples = samples.shape[0]
+    E_weights = weights.shape[0]
+    
+    if E_samples != E_weights:
+        raise ValueError(f"Number of experts in `samples` ({E_samples}) and `weights` ({E_weights}) must match.")
+    
+    # Check that weights are non-negative
+    if np.any(weights < 0):
+        raise ValueError("All weights must be non-negative.")
+    
+    # Check that weights sum to 1 across the expert axis
+    weight_sums = weights.sum(axis=0)
+    if not np.allclose(weight_sums, 1.0):
+        raise ValueError("Weights must sum to 1 across the expert axis for each grid point.")
+    
+    # Extract grid dimensions and other parameters
+    grid_shape = weights.shape[1:]  # [D1, D2, ..., Dk]
+    num_grid_points = np.prod(grid_shape)
+    num_experts = E_samples
+    num_available_samples = samples.shape[-1]  # S
+    
+    # Reshape samples to [E, num_grid_points, S]
+    samples_flat = samples.reshape(num_experts, num_grid_points, num_available_samples)
+    
+    # Reshape weights to [E, num_grid_points] and transpose to [num_grid_points, E]
+    weights_flat = weights.reshape(num_experts, num_grid_points).T  # Shape: [num_grid_points, E]
+    
+    # Compute cumulative weights for each grid point
+    cumulative_weights = np.cumsum(weights_flat, axis=1)  # Shape: [num_grid_points, E]
+    
+    # Generate random numbers for expert selection: [num_grid_points, num_moe_samples]
+    random_values = np.random.rand(num_grid_points, num_moe_samples)
+    
+    # Vectorized expert selection using comparison and argmax
+    # Expand dimensions to [num_grid_points, num_moe_samples, E] for broadcasting
+    # Compare random_values with cumulative_weights to create a boolean mask
+    # The first True in each row indicates the selected expert
+    mask = random_values[:, :, np.newaxis] < cumulative_weights[:, np.newaxis, :]  # Shape: [num_grid_points, num_moe_samples, E]
+    
+    # Use argmax to find the first True value along the expert axis
+    selected_experts = mask.argmax(axis=2)  # Shape: [num_grid_points, num_moe_samples]
+    
+    # Generate random sample indices from the selected experts: [num_grid_points, num_moe_samples]
+    sample_indices = np.random.randint(0, num_available_samples, size=(num_grid_points, num_moe_samples))
+    
+    # Prepare indices for advanced indexing
+    # Flatten the arrays to 1D for efficient indexing
+    flat_selected_experts = selected_experts.flatten()          # Shape: [num_grid_points * num_moe_samples]
+    flat_grid_cell_indices = np.repeat(np.arange(num_grid_points), num_moe_samples)  # Shape: [num_grid_points * num_moe_samples]
+    flat_sample_indices = sample_indices.flatten()              # Shape: [num_grid_points * num_moe_samples]
+    
+    # Gather the selected samples using advanced indexing
+    # `samples_flat` has shape [E, num_grid_points, S]
+    # We index it as [selected_experts, grid_cells, sample_indices]
+    moe_samples_flat = samples_flat[
+        flat_selected_experts,      # Expert indices [num_grid_points * num_moe_samples]
+        flat_grid_cell_indices,     # Grid cell indices [num_grid_points * num_moe_samples]
+        flat_sample_indices         # Sample indices [num_grid_points * num_moe_samples]
+    ]  # Shape: [num_grid_points * num_moe_samples]
+    
+    # Reshape the flat MoE samples back to [num_grid_points, num_moe_samples]
+    moe_samples_flat = moe_samples_flat.reshape(num_grid_points, num_moe_samples)  # Shape: [num_grid_points, num_moe_samples]
+    
+    # Reshape back to the original grid dimensions with the new sample axis
+    moe_samples = moe_samples_flat.reshape(*grid_shape, num_moe_samples)  # Shape: [D1, D2, ..., Dk, num_moe_samples]
+    
+    return moe_samples
+
+def compute_inverse_weights(wasserstein_distances: np.ndarray) -> np.ndarray:
+    """
+    Compute weights inversely proportional to Wasserstein distances.
+    The weights sum to 1 along the first axis (axis=0).
+
+    Parameters:
+    - wasserstein_distances (np.ndarray): 
+        Array of Wasserstein distances with shape [5, 12, 180, 80].
+
+    Returns:
+    - weights (np.ndarray): 
+        Array of weights with the same shape [5, 12, 180, 80],
+        where weights are inversely proportional to distances and 
+        sum to 1 along the first axis.
+    """
+    if wasserstein_distances.ndim != 4:
+        raise ValueError(f"Expected a 4D array, but got {wasserstein_distances.ndim}D array.")
+    
+    if wasserstein_distances.shape[0] != 5:
+        raise ValueError(f"Expected the first dimension to be of size 5, but got {wasserstein_distances.shape[0]}.")
+    
+    # Convert distances to float to ensure proper division
+    distances = wasserstein_distances.astype(float)
+    
+    # Initialize weights array with zeros
+    weights = np.zeros_like(distances)
+    
+    # Create a mask where distances are zero
+    zero_mask = distances == 0  # Shape: [5, 12, 180, 80]
+    
+    # Count the number of zero distances along the first axis for each [12, 180, 80] position
+    zero_counts = zero_mask.sum(axis=0)  # Shape: [12, 180, 80]
+    
+    # Identify positions where at least one distance is zero
+    any_zero = zero_counts > 0  # Shape: [12, 180, 80]
+    
+    # **Case 1**: Positions with one or more zero distances
+    if np.any(any_zero):
+        # For positions with any zero distances:
+        # Assign equal weights to all elements with zero distance
+        # and zero weights to elements with non-zero distances
+        # Expand zero_counts to broadcast correctly
+        # To prevent division by zero, ensure zero_counts > 0
+        weights[:, any_zero] = zero_mask[:, any_zero].astype(float)
+        weights[:, any_zero] /= zero_counts[None, any_zero]
+    
+    # **Case 2**: Positions with no zero distances
+    non_zero = ~any_zero  # Shape: [12, 180, 80]
+    if np.any(non_zero):
+        # Compute inverse distances
+        inv_dist = 1.0 / distances[:, non_zero]  # Shape: [5, N], where N is number of non-zero positions
+        
+        # Sum of inverse distances for normalization
+        sum_inv_dist = inv_dist.sum(axis=0)  # Shape: [N]
+        
+        # Normalize inverse distances to get weights
+        weights[:, non_zero] = inv_dist / sum_inv_dist[None, :]
+    
+    return weights
+
+
+def tile_with_neighbors_stride(data, window_size=3, fill_value=0):
+    """
+    Tile the data with its adjacent neighbors using sliding_window_view.
+
+    Parameters:
+    - data (np.ndarray): Input array with shape (months, lat, lon, years).
+    - window_size (int): Size of the window (must be an odd integer >=1).
+    - fill_value (float, optional): Value to assign to regions outside the boundaries. Defaults to 0.
+
+    Returns:
+    - tiled_data (np.ndarray): Output array with shape 
+                               (months, lat, lon, years * window_size^2).
+    """
+    if data.ndim != 4:
+        raise ValueError("Input data must be a 4D array with shape (months, lat, lon, years).")
+    
+    if window_size < 1 or window_size % 2 == 0:
+        raise ValueError("window_size must be an odd integer greater than or equal to 1.")
+    
+    months, lat, lon, years = data.shape
+    pad_size = window_size // 2
+
+    # Pad the array
+    padded_data = np.pad(
+        data,
+        pad_width=((0, 0), (pad_size, pad_size), (pad_size, pad_size), (0, 0)),
+        mode='constant',
+        constant_values=fill_value
+    )
+
+    # Create sliding windows
+    # sliding_window_view will create a view with a new set of dimensions for the window
+    windows = sliding_window_view(padded_data, window_shape=(window_size, window_size), axis=(1, 2))
+    # windows shape: (months, lat, lon, window_size, window_size, years)
+
+    # Rearrange axes to bring window dimensions next to years
+    windows = windows.transpose(0, 1, 2, 5, 3, 4)
+    # windows shape: (months, lat, lon, years, window_size, window_size)
+
+    # Reshape to combine window dimensions
+    tiled_data = windows.reshape(months, lat, lon, years * window_size**2)
+
+    return tiled_data
 
 def df_to_4d_array(df, variable = 'mean'):
     """
@@ -143,7 +360,7 @@ def compute_kde_results(rcm_5d, weights_arr):
                 temp_list = []
                 for r in range(R):
                     # Convert weight to integer repetition count
-                    repeat_count = int(weights_arr[r, i, j, k, 0])
+                    repeat_count = int(weights_arr[r, i, j, k, 0])  
                     if repeat_count > 0:
                         data_array = rcm_5d[r, i, j, k, :]
                         # Repeat data points according to the weight

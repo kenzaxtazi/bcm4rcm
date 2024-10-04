@@ -1,5 +1,4 @@
 import numpy as np
-import numpy as np
 from scipy.stats import ks_2samp
 from scipy.stats import anderson_ksamp
 
@@ -99,14 +98,13 @@ def compute_anderson_darling(x, y):
     
     return ad_statistic, p_value
 
-import numpy as np
 
 def compute_crps(x, y):
     """
-    Compute element-wise CRPS between corresponding distributions in x and y.
+    Compute element-wise CRPS between corresponding empirical distributions in x and y.
 
     Parameters:
-    x, y: numpy arrays of shape (..., N)
+    x, y: numpy arrays of shape (..., N_x) and (..., N_y)
         Arrays containing the samples of the empirical distributions.
         The last dimension corresponds to the samples.
 
@@ -114,25 +112,36 @@ def compute_crps(x, y):
     crps: numpy array of shape (...)
         The CRPS between the empirical distributions at each grid point.
     """
-    N = x.shape[-1]
+    # Determine the number of samples for x and y
+    N_x = x.shape[-1]
+    N_y = y.shape[-1]
     
-    # Compute term1: Mean absolute difference between x and y
-    diff_xy = np.abs(x - y)  # Shape: (..., N)
-    term1 = np.mean(diff_xy, axis=-1)
+    # Compute term1: Mean absolute difference between all pairs of x and y
+    # Shape after broadcasting: (..., N_x, N_y)
+    diff_xy = np.abs(x[..., :, np.newaxis] - y[..., np.newaxis, :])
+    term1 = np.mean(diff_xy, axis=(-2, -1))
     
-    # Compute term2: Mean absolute difference within x
-    diff_xx = np.abs(x[..., :, np.newaxis] - x[..., np.newaxis, :])  # Shape: (..., N, N)
-    term2 = 0.5 * np.mean(diff_xx, axis=(-2, -1))
+    # Compute term2: 0.5 * Mean absolute difference within x
+    if N_x > 1:
+        diff_xx = np.abs(x[..., :, np.newaxis] - x[..., np.newaxis, :])  # Shape: (..., N_x, N_x)
+        # To avoid double-counting and self-differences, subtract the diagonal
+        sum_diff_xx = np.sum(diff_xx, axis=(-2, -1)) - N_x * 0  # Diagonal is zero since |x_i - x_i| = 0
+        # Number of unique pairs: N_x * (N_x - 1)
+        term2 = 0.5 * (sum_diff_xx / (N_x * N_x))
+    else:
+        term2 = 0.0  # If there's only one sample, intra-difference is zero
     
-    # Compute term3: Mean absolute difference within y
-    diff_yy = np.abs(y[..., :, np.newaxis] - y[..., np.newaxis, :])  # Shape: (..., N, N)
-    term3 = 0.5 * np.mean(diff_yy, axis=(-2, -1))
+    # Compute term3: 0.5 * Mean absolute difference within y
+    if N_y > 1:
+        diff_yy = np.abs(y[..., :, np.newaxis] - y[..., np.newaxis, :])  # Shape: (..., N_y, N_y)
+        sum_diff_yy = np.sum(diff_yy, axis=(-2, -1)) - N_y * 0  # Diagonal is zero
+        term3 = 0.5 * (sum_diff_yy / (N_y * N_y))
+    else:
+        term3 = 0.0  # If there's only one sample, intra-difference is zero
     
     # Compute CRPS
     crps = term1 - term2 - term3
     return crps
-
-import numpy as np
 
 def compute_brier_score(x, y, threshold):
     """
