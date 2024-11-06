@@ -82,19 +82,35 @@ def rcm_normal_wass_distances(rcm_arr: np.ndarray, aphro_arr:np.ndarray, save:bo
     return wass_arr
 
 
-def softmax(wass:np.ndarray, T:int=8)-> np.array:
+def softmax_weighting(wass:np.ndarray, T:int=1)-> np.array:
     """
     Generate model weights. The higher the temperature T the more 
     likely RCMs are to each other.
 
     Args:
-        wass (np.array): Wasserstain-2 distances (RCM x months x lat x lon x 1).
+        wass (np.array): Wasserstain distances (RCM x months x lat x lon x 1).
         T (int, optional): temperature. Defaults to 8. 
 
     Returns:
         np.array: model weights (RCM x months x lat x lon x 1)
     """
-    weights = np.exp(wass / T)
+    weights = np.exp(-wass / T)
+    # take weights for each model and normalise them by the sum of all weights
+    weight_sum = np.sum(weights, axis=0)
+    weights_norm = weights / weight_sum
+    return weights_norm
+
+def inverse_weighting(wass:np.ndarray)-> np.array:
+    """
+    Generate model weights. The higher the temperature T the more 
+    likely RCMs are to each other.
+
+    Args:
+        wass (np.array): Wasserstain distances (RCM x months x lat x lon x 1).
+    Returns:
+        np.array: model weights (RCM x months x lat x lon x 1)
+    """
+    weights = 1 / wass
     # take weights for each model and normalise them by the sum of all weights
     weight_sum = np.sum(weights, axis=0)
     weights_norm = weights / weight_sum
