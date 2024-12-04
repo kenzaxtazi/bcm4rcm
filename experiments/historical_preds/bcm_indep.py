@@ -41,11 +41,20 @@ experiment =  os.environ['experiment']
 
 # Get file name 
 ref = experiment +  '_' + rcm + '_' + year
-file = directory + 'bcm4rcm/data/processed/' + ref + '.csv'
-print(file)
+years = year.split('_')
 
-df = pd.read_csv(file, index_col=0)
+path = directory + 'bcm4rcm/data/processed/' + experiment + '/' +  experiment +  '_' + rcm + '*.csv'
+files = glob.glob(path)
+print(files)
+
+for file in files:
+    df = pd.read_csv(file, index_col=0)
+    dfs.append(df)
+
+df = pd.concat(dfs)
 df['time'] = pd.to_datetime(df['time'])
+df = df[df['time']> years[0]]
+df = df[df['time']< years[1]]
 df['month'] = df['time'].dt.month
 
 # Boxcox transform
