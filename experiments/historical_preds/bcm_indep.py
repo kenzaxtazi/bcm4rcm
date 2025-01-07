@@ -26,16 +26,15 @@ from models import guepard_baselines
 
 #############################################
 
-'''
-rcm = 'MIROC'
-year = '1976_2005'
-experiment = 'historical'
-'''
 
+rcm = 'MIROC'
+year = '2036_2065'
+experiment = 'rcp45'
+'''
 rcm = os.environ['rcm']
 year =  os.environ['year']
 experiment =  os.environ['experiment']
-
+'''
 
 ##############################################
 
