@@ -347,7 +347,7 @@ class Ensemble(GPEnsemble):
             var = 1.0 / prec
             mu = var * tf.reduce_sum(weight_matrix * prec_s * Me, axis=-1)
 
-        np.save(str(self.weighting)+ "_weight_matrix_new.npy", weight_matrix.numpy())
+        #np.save(str(self.weighting)+ "_weight_matrix_new.npy", weight_matrix.numpy())
 
         return mu, var
 
