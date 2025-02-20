@@ -23,4 +23,4 @@ Tazi, K., Kim, S. W. P., Girona-Mata, M., & Turner, R. E. (2025). Refined climat
 * `process_data`: functions to process raw RCM data to make files over desired time periods
 
 ## Data
-The CORDEX-WAS data are available through the [Earth System Federation Grid nodes](https://esgf-metagrid.cloud.dkrz.de} and the APHRODITE data through [APHRODITE's Water Resources website](http://aphrodite.st.hirosaki-u.ac.jp/download/). The data for the final results analysed in the paper are found on [Zenondo](https://doi.org/10.5281/zenodo.14837272)
+The CORDEX-WAS data are available through the [Earth System Federation Grid nodes](https://esgf-metagrid.cloud.dkrz.de) and the APHRODITE data through [APHRODITE's Water Resources website](http://aphrodite.st.hirosaki-u.ac.jp/download/). The data for the final results analysed in the paper are found on [Zenondo](https://doi.org/10.5281/zenodo.14837272)
