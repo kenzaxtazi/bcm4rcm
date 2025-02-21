@@ -1,25 +1,22 @@
-# Code based on:
-# https://github.com/samcohen16/Healing-POEs-ICML/blob/master/Code/bayesian_benchmarks_modular/
-# bayesian_benchmarks/models/expert_models_reg.py
+"""
+Code based on guepard
+https://github.com/NicolasDurrande/guepard/tree/main/guepard
+guepard/baselines.py
 
-# Note-worthy additions:
-# - allow for multiple output dimensions
-# - subclassed as GPModel
+Additional chained GP implementation (LatentEnsemble and LatentGPEnsemble classes).
 
+"""
 
 import abc
+import gpflow
+import tensorflow as tf
+import cs.check_shapes as cs
+
 from enum import Enum
 from itertools import zip_longest
-from typing import List, Optional, Union
-
-import tensorflow as tf
-from check_shapes import check_shape as cs
-from check_shapes import check_shapes
-
-import gpflow
-from gpflow.base import InputData, MeanAndVariance, RegressionData
 from gpflow.models import GPModel
-import numpy as np
+from typing import List, Optional, Union
+from gpflow.base import InputData, MeanAndVariance, RegressionData
 
 
 class EnsembleMethods(Enum):
@@ -30,7 +27,7 @@ class EnsembleMethods(Enum):
     BCM = "BCM"
     RBCM = "rBCM"
     BARY = "Bary"
-    MoE = "MoE"
+    MOE = "MOE"
 
 
 class WeightingMethods(Enum):
@@ -44,8 +41,7 @@ class WeightingMethods(Enum):
     KL = "KL"
 
 
-
-@check_shapes(
+@cs(
     "mu_s: [N, L, P]  # N: num data, L: num latent, P: num experts",
     "var_s: [N, L, P]",
     "power: []",
@@ -60,27 +56,33 @@ def compute_weights(
     prior_var: Optional[tf.Tensor] = None,
     softmax: bool = False,
 ) -> tf.Tensor:
+    """
+    Compute unnormalized weight matrix.
 
-    """Compute unnormalized weight matrix
+    Args:
+        mu_s (tf.Tensor): predictive mean of each expert (P) at each test point (N) for each
+            output (L)
+        var_s (tf.Tensor): predictive (marginal) variance of each expert (P) at each test point (N)
+            for each output (L)
+        power (float): scalar, softmax scaling
+        weighting (WeightingMethods): weighting method
+        prior_var (Optional[tf.Tensor], optional): prior variance. Defaults to None.
+        softmax (bool, optional): whether to use softmax scaling or fraction scaling.
+            Defaults to False.
 
-    Inputs :
-        - mu_s: predictive mean of each expert (P) at each test point (N) for each output (L)
-        - var_s: predictive (marginal) variance of each expert (P) at each test point (N) for each output (L)
-        - var_s: dimension: n_expert x n_test_points : predictive variance of each expert at each test point
-        - power: scalar, Softmax scaling
-        - weighting: weighting method
-        - prior_var, prior variance
-        - soft_max_wass : whether to use softmax scaling or fraction scaling
+    Raises:
+        NotImplementedError: Unknown weighting passed to compute_weights.
 
-    Output :
-        -- weight_matrix, dimension: n_expert x n_test_points : unnormalized weight of ith expert at jth test point
+    Returns:
+        tf.Tensor: weight_matrix, dimension: n_expert x n_test_points : unnormalized weight of
+          ith expert at jth test point
     """
 
     if weighting == WeightingMethods.VAR:
         return tf.math.exp(-power * var_s)
 
     elif weighting == WeightingMethods.WASS:
-        wass = mu_s**2 + (var_s - prior_var) #** 2
+        wass = mu_s**2 + (var_s - prior_var)  # ** 2
         if softmax:
             return tf.math.exp(power * wass)
         else:
@@ -101,15 +103,14 @@ def compute_weights(
 
 
 def normalize_weights(weight_matrix: tf.Tensor) -> tf.Tensor:
+    """Normalize weight matrix."""
     sum_weights = tf.reduce_sum(weight_matrix, axis=-1, keepdims=True)
     weight_matrix = weight_matrix / sum_weights
     return weight_matrix
 
 
 class GPEnsemble(GPModel, metaclass=abc.ABCMeta):
-    """
-    Base class for GP ensembles.
-    """
+    """Base class for GP ensembles."""
 
     def __init__(
         self,
@@ -146,13 +147,17 @@ class GPEnsemble(GPModel, metaclass=abc.ABCMeta):
 
     @property
     def trainable_variables(self):  # type: ignore
+        """Return trainable variables."""
         r = []
         for model in self.models:
             r += model.trainable_variables
         return r
 
-    def maximum_log_likelihood_objective(self, data: List[RegressionData]) -> tf.Tensor:  # type: ignore
-        [
+    def maximum_log_likelihood_objective(
+        self, data: List[RegressionData]
+    ) -> tf.Tensor:  # type: ignore
+        """Return maximum log likelihood objective from data."""
+        _ = [
             isinstance(m, gpflow.models.ExternalDataTrainingLossMixin)
             for m in self.models
         ]
@@ -160,7 +165,9 @@ class GPEnsemble(GPModel, metaclass=abc.ABCMeta):
         return tf.reduce_sum(objectives)
 
     def training_loss(
-        self, data: List[Union[None, RegressionData]] = [None]) -> tf.Tensor:
+        self, data: List[Union[None, RegressionData]] = [None]
+    ) -> tf.Tensor:
+        """Return training loss function."""
         external = [
             isinstance(m, gpflow.models.ExternalDataTrainingLossMixin)
             for m in self.models
@@ -170,10 +177,9 @@ class GPEnsemble(GPModel, metaclass=abc.ABCMeta):
             for m, ext, d in zip_longest(self.models, external, data)
         ]
         return tf.reduce_sum(objectives)
-    
 
 
-class latent_GPEnsemble(GPModel, metaclass=abc.ABCMeta):
+class LatentGPEnsemble(GPModel, metaclass=abc.ABCMeta):
     """
     Base class for latent GP ensembles.
     """
@@ -213,50 +219,52 @@ class latent_GPEnsemble(GPModel, metaclass=abc.ABCMeta):
 
     @property
     def trainable_variables(self):  # type: ignore
+        """Return trainable variables."""
         r = []
         for model in self.models:
             r += model.trainable_variables
         return r
-    
+
     @property
-    def variational_variables(self): # type: ignore
+    def variational_variables(self):  # type: ignore
+        """Return variational variables."""
         r = []
         for model in self.models:
             r.append([model.q_mu, model.q_sqrt])
         return r
-    
-    def maximum_log_likelihood_objective(self, data: List[RegressionData]) -> tf.Tensor:  # type: ignore
-        """ This give a scalar value, data is a zipped list of X and Y """
-        
-        [
+
+    def maximum_log_likelihood_objective(
+        self, data: List[RegressionData]
+    ) -> tf.Tensor:  # type: ignore
+        """This give a scalar value, data is a zipped list of X and Y"""
+        _ = [
             isinstance(m, gpflow.models.ExternalDataTrainingLossMixin)
             for m in self.models
         ]
         objectives = [m.training_loss(d) for m, d in zip_longest(self.models, data)]
         return tf.reduce_sum(objectives)
-    
 
     def training_loss(self, Xl, Yl) -> tf.function:
-        """ Return a function """
-
-        objectives=[]
+        """Return a training loss function."""
+        objectives = []
 
         def closure() -> tf.Tensor:
-
-            for i in range(len(self.models)):
-                external = isinstance(self.models[i], gpflow.models.ExternalDataTrainingLossMixin)
+            for i in enumerate(self.models):
+                external = isinstance(
+                    self.models[i], gpflow.models.ExternalDataTrainingLossMixin
+                )
 
                 if external is False:
                     obj = self.models[i].training_loss()
                 if external is True:
-                    obj = self.models[i].training_loss((Xl[i],Yl[i]))
+                    obj = self.models[i].training_loss((Xl[i], Yl[i]))
                 objectives.append(obj)
-        
             return tf.reduce_sum(objectives)
 
         if compile:
             closure = tf.function(closure)
-        return  closure
+        return closure
+
 
 class Ensemble(GPEnsemble):
     """
@@ -268,17 +276,18 @@ class Ensemble(GPEnsemble):
         models: List[GPModel],
         method: EnsembleMethods,
         weighting: WeightingMethods,
-        power: float = 8.0):
+        power: float = 8.0,
+    ):
         """
         :param models: A list of GPflow models with the same prior and likelihood.
         """
-        
+
         GPEnsemble.__init__(self, models)
         self.method = method
         self.weighting = weighting
         self.power = power
 
-    @check_shapes(
+    @cs(
         "Xnew: [N, D]",
         "return[0]: [N, broadcast L]",
         "return[1]: [N, broadcast L]",
@@ -312,10 +321,12 @@ class Ensemble(GPEnsemble):
         prec_s = cs(1.0 / Ve, f"[N, {b} L, P]")
 
         weight_matrix = cs(
-            compute_weights(Me, Ve, self.power, self.weighting, vp, softmax=True), f"[N, {b} L, P]"
+            compute_weights(Me, Ve, self.power, self.weighting, vp, softmax=True),
+            f"[N, {b} L, P]",
         )
 
-        # For all DgPs, normalized weights of experts requiring normalized weights and compute the aggegated local precisions
+        # For all DgPs, normalized weights of experts requiring normalized weights
+        # and compute the aggegated local precisions
         if self.method == EnsembleMethods.POE:
             prec = cs(tf.reduce_sum(prec_s, axis=-1), f"[N, {b} L]")
 
@@ -347,20 +358,22 @@ class Ensemble(GPEnsemble):
             var = 1.0 / prec
             mu = var * tf.reduce_sum(weight_matrix * prec_s * Me, axis=-1)
 
-        #np.save(str(self.weighting)+ "_weight_matrix_new.npy", weight_matrix.numpy())
+        # np.save(str(self.weighting)+ "_weight_matrix_new.npy", weight_matrix.numpy())
 
         return mu, var
 
     def predict_y(
         self, Xnew: InputData, full_cov: bool = False, full_output_cov: bool = False
     ) -> MeanAndVariance:
+        """Predict mean and variance given input Xnew."""
         assert not full_cov
         assert not full_output_cov
 
         m, v = self.predict_f(Xnew)
         return self.likelihood.predict_mean_and_var(Xnew, m, v)
 
-class latent_Ensemble(latent_GPEnsemble):
+
+class LatentEnsemble(LatentGPEnsemble):
     """
     Implements a range of Ensemble GP models.
     """
@@ -370,17 +383,18 @@ class latent_Ensemble(latent_GPEnsemble):
         models: List[GPModel],
         method: EnsembleMethods,
         weighting: WeightingMethods,
-        power: float = 8.0):
+        power: float = 8.0,
+    ):
         """
         :param models: A list of GPflow models with the same prior and likelihood.
         """
 
-        latent_GPEnsemble.__init__(self, models)
+        LatentGPEnsemble.__init__(self, models)
         self.method = method
         self.weighting = weighting
         self.power = power
 
-    @check_shapes(
+    @cs(
         "Xnew: [N, D]",
         "return[0]: [N, broadcast L]",
         "return[1]: [N, broadcast L]",
@@ -414,10 +428,14 @@ class latent_Ensemble(latent_GPEnsemble):
         prec_s = cs(1.0 / Ve, f"[N, {b} L, P]")
 
         weight_matrix = cs(
-            compute_weights(Me, Ve, self.power, self.weighting, vp, softmax=True), f"[N, {b} L, P]"
+            compute_weights(Me, Ve, self.power, self.weighting, vp, softmax=True),
+            f"[N, {b} L, P]",
         )
 
-        # For all DgPs, normalized weights of experts requiring normalized weights and compute the aggegated local precisions
+        prec = None
+
+        # For all DgPs, normalized weights of experts requiring normalized weights
+        # and compute the aggegated local precisions
         if self.method == EnsembleMethods.POE:
             prec = cs(tf.reduce_sum(prec_s, axis=-1), f"[N, {b} L]")
 
@@ -449,32 +467,40 @@ class latent_Ensemble(latent_GPEnsemble):
             var = 1.0 / prec
             mu = var * tf.reduce_sum(weight_matrix * prec_s * Me, axis=-1)
 
-        #np.save(str(self.weighting)+ "_weight_matrix_new.npy", weight_matrix.numpy())
+        # np.save(str(self.weighting)+ "_weight_matrix_new.npy", weight_matrix.numpy())
 
         return mu, var
 
     def predict_y(
         self, Xnew: InputData, full_cov: bool = False, full_output_cov: bool = False
     ) -> MeanAndVariance:
+        """Predict mean and variance for the given input Xnew."""
         assert not full_cov
         assert not full_output_cov
 
         m, v = self.predict_f(Xnew)
         return self.likelihood.predict_mean_and_var(Xnew, m, v)
-    
+
 
 def get_gpr_submodels(
     data_list,
     kernel,
     mean_function=None,
-    noise_variance:float = 0.01,) -> List:
+    noise_variance: float = 0.01,
+) -> List:
     """
-    Helper function to build a list of GPflow GPR submodels from a list of datasets, a GP prior and a likelihood variance.
+    Helper function to build a list of GPflow GPR submodels from a list of datasets,
+     a GP prior and a likelihood variance.
     """
-    models = [gpflow.models.GPR(data, kernel, mean_function, noise_variance) for data in data_list]
+    models = [
+        gpflow.models.GPR(data, kernel, mean_function, noise_variance)
+        for data in data_list
+    ]
     # else:
-    # models = [GPR((np.mean(data[0], axis=-2), np.mean(data[1], axis=-2)), kernel, mean_function, 
-    #              likelihood=gpflow.likelihoods.Gaussian(FixedVarianceOfMean(data[1]))) for data in data_list]
+    # models = [GPR((np.mean(data[0], axis=-2),
+    #   np.mean(data[1], axis=-2)),
+    #   kernel, mean_function,
+    #   likelihood=gpflow.likelihoods.Gaussian(FixedVarianceOfMean(data[1]))) for data in data_list]
     for m in models[1:]:
         m.likelihood = models[0].likelihood
         m.mean_function = models[0].mean_function
